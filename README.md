@@ -1,10 +1,25 @@
-# Windows Authentication & Brute Force Analysis in Splunk
+# 🔍 Windows Active Directory Brute Force Investigation & SIEM Analytics
 
-Splunk search queries and correlation rules written during a lab setup to detect RDP/SMB brute force attacks against a Windows Server 2022 domain controller (`WIN-DC01`).
+[![Splunk](https://img.shields.io/badge/SIEM-Splunk%20Enterprise-000000?style=for-the-badge&logo=splunk&logoColor=FC621D)](https://www.splunk.com/)
+[![Windows Server](https://img.shields.io/badge/Target-Windows%20Server%202022-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows-server)
+[![MITRE ATT&CK](https://img.shields.io/badge/MITRE-T1110.001%20%7C%20T1078-red?style=for-the-badge)](https://attack.mitre.org/techniques/T1110/001/)
+[![Kali Linux](https://img.shields.io/badge/Attack-Kali%20Linux-557C93?style=for-the-badge&logo=kalilinux&logoColor=white)](https://www.kali.org/)
 
-### Forwarder Configuration (`inputs.conf`)
+---
 
-Configured on the target domain controller to send Security event logs to Splunk:
+## 📌 Project Overview
+
+This repository contains SIEM log ingestion setups, custom Search Processing Language (SPL) queries, correlation searches, and threat detection rules created during a hands-on SOC investigation of Windows Active Directory brute-force authentication attacks.
+
+The lab simulates dictionary-based authentication attacks against SMB and Remote Desktop Services (RDP) on a target Active Directory Domain Controller (`WIN-DC01`), ingesting raw Security Event Logs into **Splunk Enterprise** via Universal Forwarders.
+
+---
+
+## 🛠️ Infrastructure & Ingestion Setup
+
+### Universal Forwarder Configuration (`inputs.conf`)
+
+Configured on `WIN-DC01` (`192.168.56.106`) to forward Windows Security logs to Splunk:
 
 ```ini
 [WinEventLog://Security]
@@ -16,14 +31,21 @@ checkpointInterval = 5
 render_xml = false
 ```
 
-Simulated dictionary attacks from Kali (`192.168.56.105`) using hydra:
+### Attack Simulation Execution
+
+Launched dictionary attacks from Kali (`192.168.56.105`) targeting administrative accounts over SMB:
+
 ```bash
 hydra -l administrator -P /usr/share/wordlists/rockyou.txt 192.168.56.106 smb -t 4
 ```
 
-### SPL Queries
+---
 
-1. Group failed logon attempts (`EventCode 4625`) by target user and substatus code:
+## 🔎 Splunk SPL Analytics & Investigation Queries
+
+### 1. High-Volume Failed Logon Breakdown (`EventCode 4625`)
+
+Groups authentication failures by target user, origin IP, and NTLM/Kerberos substatus codes:
 
 ```spl
 index=win_logs sourcetype="WinEventLog:Security" EventCode=4625
@@ -31,15 +53,19 @@ index=win_logs sourcetype="WinEventLog:Security" EventCode=4625
 | sort - count
 ```
 
-Sample output:
+**Output Telemetry:**
 ```text
-TargetUserName   IpAddress       Count  SubStatus
-administrator    192.168.56.105  87     0xc000006a
-admin            192.168.56.105  34     0xc000006a
-guest            192.168.56.105  12     0xc0000064
+TargetUserName   IpAddress       Count  SubStatus     Meaning
+administrator    192.168.56.105  87     0xc000006a    User exists, invalid password
+admin            192.168.56.105  34     0xc000006a    User exists, invalid password
+guest            192.168.56.105  12     0xc0000064    User account does not exist
 ```
 
-2. Correlate failed attempts (`4625`) with successful logons (`4624`):
+---
+
+### 2. Failure-to-Compromise Correlation Query (`EventCode 4625` -> `4624`)
+
+Tracks whether a high-volume failure sequence culminated in a successful authentication event (`EventCode 4624` with `LogonType 3` Network or `LogonType 10` RDP):
 
 ```spl
 index=win_logs sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=4624) IpAddress="192.168.56.105"
@@ -49,9 +75,11 @@ index=win_logs sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=46
 | fieldformat last_seen=strftime(last_seen, "%Y-%m-%d %H:%M:%S")
 ```
 
-### Scheduled Correlation Search
+---
 
-Alert query saved in Splunk to flag source IPs exceeding 15 failures in 5 minutes:
+## 🚨 SIEM Correlation Search & Alert Engineering
+
+Saved as a scheduled Splunk Correlation Rule to generate real-time security alerts when brute-force or password spraying activity crosses baseline thresholds:
 
 ```spl
 index=win_logs sourcetype="WinEventLog:Security" EventCode=4625 IpAddress!="127.0.0.1" IpAddress!="-" TargetUserName!="*$"
@@ -60,8 +88,26 @@ index=win_logs sourcetype="WinEventLog:Security" EventCode=4625 IpAddress!="127.
 | where count > 15 OR unique_users > 3
 ```
 
-### Log Field Reference
+### Alert Logic
+- **Brute Force Alert:** Triggers if a single source IP generates **> 15 logon failures within 5 minutes**.
+- **Password Spray Alert:** Triggers if a single source IP targets **> 3 distinct usernames** within the time window.
 
-- `SubStatus 0xc000006a`: Valid user, bad password.
-- `SubStatus 0xc0000064`: User name does not exist.
-- `TargetUserName!="*$"`: Excludes Active Directory computer machine accounts (e.g. `WIN-DC01$`) from alert triggers.
+---
+
+## 🎯 MITRE ATT&CK Mapping
+
+| Tactic | Technique | ID | Detection Log | Evidence |
+| :--- | :--- | :--- | :--- | :--- |
+| **Credential Access** | Brute Force: Password Guessing | [T1110.001](https://attack.mitre.org/techniques/T1110/001/) | `WinEventLog:Security` | High count EventCode 4625 (`SubStatus 0xc000006a`) |
+| **Credential Access** | Brute Force: Password Spraying | [T1110.003](https://attack.mitre.org/techniques/T1110/003/) | `WinEventLog:Security` | Single IP probing multiple `TargetUserName`s |
+| **Initial Access** | Valid Accounts: Domain Accounts | [T1078.002](https://attack.mitre.org/techniques/T1078/002/) | `WinEventLog:Security` | EventCode 4624 (`LogonType 3` post failure spike) |
+
+---
+
+## 🛠️ Practical SIEM Tuning Gotchas
+
+1. **Filtering Active Directory Machine Account Noise (`*$`)**:
+   Domain controllers and computer objects generate automated background authentication events (e.g. `WIN-DC01$`). Filtering `TargetUserName!="*$"` prevents false positive alert triggers.
+
+2. **NTLM `WorkstationName` Field Handling**:
+   In NTLM network authentication (`EventCode 4625`), the `WorkstationName` field is often blank or easily spoofed. Reliable IP correlation relies strictly on `IpAddress`.
