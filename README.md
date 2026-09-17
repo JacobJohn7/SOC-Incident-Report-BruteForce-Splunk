@@ -1,13 +1,8 @@
-# 🔍 Windows Active Directory Brute Force Investigation & SIEM Analytics
-
-[![Splunk](https://img.shields.io/badge/SIEM-Splunk%20Enterprise-000000?style=for-the-badge&logo=splunk&logoColor=FC621D)](https://www.splunk.com/)
-[![Windows Server](https://img.shields.io/badge/Target-Windows%20Server%202022-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows-server)
-[![MITRE ATT&CK](https://img.shields.io/badge/MITRE-T1110.001%20%7C%20T1078-red?style=for-the-badge)](https://attack.mitre.org/techniques/T1110/001/)
-[![Kali Linux](https://img.shields.io/badge/Attack-Kali%20Linux-557C93?style=for-the-badge&logo=kalilinux&logoColor=white)](https://www.kali.org/)
+# Windows Active Directory Brute Force Investigation & SIEM Analytics
 
 ---
 
-## 📌 Project Overview
+## Project Overview
 
 This repository contains SIEM log ingestion setups, custom Search Processing Language (SPL) queries, correlation searches, and threat detection rules created during a hands-on SOC investigation of Windows Active Directory brute-force authentication attacks.
 
@@ -15,7 +10,7 @@ The lab simulates dictionary-based authentication attacks against SMB and Remote
 
 ---
 
-## 🛠️ Infrastructure & Ingestion Setup
+## Infrastructure & Ingestion Setup
 
 ### Universal Forwarder Configuration (`inputs.conf`)
 
@@ -41,7 +36,7 @@ hydra -l administrator -P /usr/share/wordlists/rockyou.txt 192.168.56.106 smb -t
 
 ---
 
-## 🔎 Splunk SPL Analytics & Investigation Queries
+## Splunk SPL Analytics & Investigation Queries
 
 ### 1. High-Volume Failed Logon Breakdown (`EventCode 4625`)
 
@@ -77,7 +72,7 @@ index=win_logs sourcetype="WinEventLog:Security" (EventCode=4625 OR EventCode=46
 
 ---
 
-## 🚨 SIEM Correlation Search & Alert Engineering
+## SIEM Correlation Search & Alert Engineering
 
 Saved as a scheduled Splunk Correlation Rule to generate real-time security alerts when brute-force or password spraying activity crosses baseline thresholds:
 
@@ -94,7 +89,7 @@ index=win_logs sourcetype="WinEventLog:Security" EventCode=4625 IpAddress!="127.
 
 ---
 
-## 🎯 MITRE ATT&CK Mapping
+## MITRE ATT&CK Mapping
 
 | Tactic | Technique | ID | Detection Log | Evidence |
 | :--- | :--- | :--- | :--- | :--- |
@@ -104,7 +99,7 @@ index=win_logs sourcetype="WinEventLog:Security" EventCode=4625 IpAddress!="127.
 
 ---
 
-## 🛠️ Practical SIEM Tuning Gotchas
+## Practical SIEM Tuning Gotchas
 
 1. **Filtering Active Directory Machine Account Noise (`*$`)**:
    Domain controllers and computer objects generate automated background authentication events (e.g. `WIN-DC01$`). Filtering `TargetUserName!="*$"` prevents false positive alert triggers.
